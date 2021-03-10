@@ -264,6 +264,8 @@ def export_detector_homoAdapt_gpu(config, output_dir, args):
 
         fe.net_parallel()
         print(path)
+
+
         # save to files
         save_file = save_output / "export.txt"
         with open(save_file, "a") as myfile:

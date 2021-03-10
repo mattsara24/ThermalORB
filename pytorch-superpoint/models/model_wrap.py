@@ -98,12 +98,20 @@ class SuperPointFrontend_torch(object):
             # self.net = SuperPointNet()
             checkpoint = torch.load(weights_path,
                                     map_location=lambda storage, loc: storage)
+            print("HERE")
             self.net.load_state_dict(checkpoint['model_state_dict'])
+            example = torch.rand(1, 1, 240, 320)
+            traced_script_module = torch.jit.trace(self.net, example, strict=False)
+            print(traced_script_module)
+            print("JIT SUCCEEDED")
+            traced_script_module.save("combinedSuperPoint.pt")
+            print("JIT SAVED")
         else:
             from models.SuperPointNet_pretrained import SuperPointNet
             self.net = SuperPointNet()
             self.net.load_state_dict(torch.load(weights_path,
                                                 map_location=lambda storage, loc: storage))
+            print("THERE)")
         # if grad==False:
             # torch.no_grad(
         # self.net = self.net.cuda()
