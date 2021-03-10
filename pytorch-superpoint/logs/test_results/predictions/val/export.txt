@@ -1,0 +1,2 @@
+load model: logs/magicpoint_synth_t2/checkpoints/superPointNet_100000_checkpoint.pth.tar
+homography adaptation: 100
