@@ -28,13 +28,13 @@ $ make
 In order to properly compile the code you must edit the CMakeLists.txt file to point it to your installation of libtorch.
 > The easiest way to do that is to determine where your python package manager installed it.
 > 
-> Pip
-> ```
-> pip show torch
-> ```
+> Pip ``` pip show torch```
 > Once you have that root directory for torch append onto it ``` share/cmake/Torch/ ```. This should be enough to work.
 
 ## Running Instructions
 ***
-PLACEHOLDER
+From inside the build directory you can run the package with
+``` ./superPoint ../pretained/combinedSuperPoint.pt ````
+##### NOTE
+On the initial run you might have to edit line 220 of imageProcess.cc and set your local image path.
 
