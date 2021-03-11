@@ -12,6 +12,7 @@ The code is flexible to different SuperPoint weights because it take a Pytorch m
 ## Requires
 ***
 
+
 ## Installation
 ***
 ```
@@ -21,17 +22,16 @@ $ mkdir build && cd build
 $ cmake ..
 $ make
 ```
+
 ### NOTE
 In order to properly compile the code you must edit the CMakeLists.txt file to point it to your installation of libtorch.
 > The easiest way to do that is to determine where your python package manager installed it.
-> Anaconda
-> ```
-> conda info torch
-> ```
+> 
 > Pip
 > ```
 > pip show torch
 > ```
+> Once you have that root directory for torch append onto it ``` share/cmake/Torch/ ```. This should be enough to work.
 ## Running Instructions
 ***
 Give instructions on how to collaborate with your project.
