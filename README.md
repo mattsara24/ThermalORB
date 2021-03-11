@@ -2,7 +2,7 @@
 ## Table of Contents
 1. [General Info](#general-info)
 2. [Installation](#installation)
-3. [Running Instructions] (#RunInstructions)
+3. [Running Instructions](#RunInstructions)
 ### General Info
 ***
 C++ Wrapper of https://github.com/eric-yyjau/pytorch-superpoint using PyTorch and OpenCV. 
