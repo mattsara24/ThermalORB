@@ -34,7 +34,7 @@ In order to properly compile the code you must edit the CMakeLists.txt file to p
 ## Running Instructions
 ***
 From inside the build directory you can run the package with
-``` ./superPoint ../pretained/combinedSuperPoint.pt ````
+``` ./superPoint ../pretained/combinedSuperPoint.pt ```
 ##### NOTE
 On the initial run you might have to edit line 220 of imageProcess.cc and set your local image path.
 
