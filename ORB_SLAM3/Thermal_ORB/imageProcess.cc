@@ -15,9 +15,6 @@
 * You should have received a copy of the GNU General Public License along with ORB-SLAM3.
 * If not, see <http://www.gnu.org/licenses/>.
 */
-
-
-
 #include<iostream>
 #include<algorithm>
 #include<fstream>
@@ -30,7 +27,6 @@
 #define CV_LOAD_IMAGE_UNCHANGED cv::IMREAD_UNCHANGED
 #endif
 
-//#include<System.h>
 #include <torch/torch.h>
 #include <torch/script.h>
 #include <ATen/ATen.h>
@@ -91,7 +87,7 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
     keep[1] -= pad;
     auto inds_keep = at::zeros(keep[0].size(0));
 
-    for(int i = 0; i < keep[0].size(0); i++) {    
+    for(int i = 0; i < keep[0].size(0); i++) {
       inds_keep[i] = inds[keep[0][i].item<int>()][keep[1][i].item<int>()];
     }
     std::cout << "test" << std::endl;
@@ -115,50 +111,6 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
 
     return out;
 }
-
-/*
-    def nms_fast(self, in_corners, H, W, dist_thresh):
-
-        grid = np.zeros((H, W)).astype(int)  # Track NMS data.
-        inds = np.zeros((H, W)).astype(int)  # Store indices of points.
-        # Sort by confidence and round to nearest int.
-        inds1 = np.argsort(-in_corners[2, :])
-        corners = in_corners[:, inds1]
-        rcorners = corners[:2, :].round().astype(int)  # Rounded corners.
-        # Check for edge case of 0 or 1 corners.
-        if rcorners.shape[1] == 0:
-            return np.zeros((3, 0)).astype(int), np.zeros(0).astype(int)
-        if rcorners.shape[1] == 1:
-            out = np.vstack((rcorners, in_corners[2])).reshape(3, 1)
-            return out, np.zeros((1)).astype(int)
-        # Initialize the grid.
-        for i, rc in enumerate(rcorners.T):
-            grid[rcorners[1, i], rcorners[0, i]] = 1
-            inds[rcorners[1, i], rcorners[0, i]] = i
-        # Pad the border of the grid, so that we can NMS points near the border.
-        pad = dist_thresh
-        grid = np.pad(grid, ((pad, pad), (pad, pad)), mode='constant')
-        # Iterate through points, highest to lowest conf, suppress neighborhood.
-        count = 0
-        for i, rc in enumerate(rcorners.T):
-            # Account for top and left padding.
-            pt = (rc[0] + pad, rc[1] + pad)
-            if grid[pt[1], pt[0]] == 1:  # If not yet suppressed.
-                grid[pt[1] - pad:pt[1] + pad + 1, pt[0] - pad:pt[0] + pad + 1] = 0
-                grid[pt[1], pt[0]] = -1
-                count += 1
-        # Get all surviving -1's and return sorted array of remaining corners.
-        keepy, keepx = np.where(grid == -1)
-        keepy, keepx = keepy - pad, keepx - pad
-        inds_keep = inds[keepy, keepx]
-        out = corners[:, inds_keep]
-        values = out[-1, :]
-        inds2 = np.argsort(-values)
-        out = out[:, inds2]
-        out_inds = inds1[inds_keep[inds2]]
-        return out, out_inds
-        */
-
 
 at::Tensor getPtsFromHeatmap(at::Tensor heatmap, float conf_thresh){
     heatmap = heatmap.squeeze();
@@ -191,21 +143,7 @@ at::Tensor getPtsFromHeatmap(at::Tensor heatmap, float conf_thresh){
         std::cout<< pts[0][i].item<int>() << " " << pts[1][i].item<int>() << " " << pts[2][i].item<float>() << " " << std::endl;
     }
 
-
-    /*
-FUNCTIONS
-
-        pts, _ = self.nms_fast(pts, H, W, dist_thresh=self.nms_dist)  # Apply NMS.
-        inds = np.argsort(pts[2, :])
-        pts = pts[:, inds[::-1]]  # Sort by confidence.
-        # Remove points along border.
-        bord = self.border_remove
-        toremoveW = np.logical_or(pts[0, :] < bord, pts[0, :] >= (W - bord))
-        toremoveH = np.logical_or(pts[1, :] < bord, pts[1, :] >= (H - bord))
-        toremove = np.logical_or(toremoveW, toremoveH)
-        pts = pts[:, ~toremove]
-        return pts
-*/
+    //TODO -> Remove points around the border of the image
     return pts;
 }
 
@@ -308,16 +246,16 @@ int main(int argc, const char* argv[]) {
 
   //cv::imshow("Display window", img);
   //int j = cv::waitKey(0); // Wait for a keystroke in the window
-  
+ 
+  //TODO -> Translate to C++  --- > dense_desc = nn.functional.interpolate(coarse_desc, scale_factor=(self.cell, self.cell), mode='bilinear')
+  auto dn = torch::norm(descriptors, 2, 1);
+  auto desc = descriptors.div(torch::unsqueeze(dn, 1));
+
+  desc = desc.transpose(0, 1).contiguous();  // [n_keypoints, 256]
+  desc = desc.to(torch::kCPU);
+
   /*
 
-    auto dn = torch::norm(desc, 2, 1);
-    desc = desc.div(torch::unsqueeze(dn, 1));
-
-    desc = desc.transpose(0, 1).contiguous();  // [n_keypoints, 256]
-    desc = desc.to(torch::kCPU);
-
-    dense_desc = nn.functional.interpolate(coarse_desc, scale_factor=(self.cell, self.cell), mode='bilinear')
     # norm the descriptor
     def norm_desc(desc):
         dn = torch.norm(desc, p=2, dim=1) # Compute the norm.
