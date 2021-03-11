@@ -35,6 +35,9 @@ LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 
 
 find_package(Torch REQUIRED PATHS /home/msaraceno/.local/lib/python3.6/site-packages/torch/share/cmake/Torch)
+if(NOT Torch_FOUND)
+   message(FATAL_ERROR "Torch cmake info not found. Edit line 37 of CMakeLists.txt with your path.")
+endif()
 find_package(OpenCV 3)
 if(NOT OpenCV_FOUND)
    find_package(OpenCV 2.4.3 QUIET)
