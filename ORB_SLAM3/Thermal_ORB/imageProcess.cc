@@ -39,27 +39,25 @@
 #include <iostream>
 #include <memory>
 
-#define CONF_THRESH 0.002
+#define CONF_THRESH 0.02
 
 at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
     auto grid = at::zeros({h,w}).to(torch::kInt);
     auto inds = at::zeros({h,w}).to(torch::kInt);
-
-    auto inds1 = (-1*in_corners[2]).argsort(0);
-    auto corners = at::zeros((in_corners.sizes()));
-
+    
+    auto inds1 = (in_corners[2]).argsort(0);
+    auto corners = at::zeros(in_corners.sizes());
     for(int i = 0; i < in_corners.size(0); i++) {
       for (int j = in_corners.size(1) - 1 ; j >= 0; j--) {
         corners[i][j] = in_corners[i][inds1[j]];
       }
-    }  
+    }
 
     auto rcorners = at::zeros({2, corners.size(1)});
-    
     for(int i = 0; i < 2; i++) {
         rcorners[i] = corners[i];
-    }  
-
+    }
+    
     if(rcorners.size(1) == 0){
         return at::zeros({3,0}).to(torch::kInt);
     } else if (rcorners.size(1) == 1) {
@@ -72,40 +70,41 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
        inds[rcorners[1][i].item<int>()][rcorners[0][i].item<int>()] = i;
     }
 
-
-    int pad = 2;//dist_thresh;
-
-    //grid = torch::nn::functional::pad(grid, torch::nn::functional::PadFuncOptions({pad}).mode(torch::kConstant));
-    for(int i = 2; i < rcornersT.size(0) - 2; i++){
+    int pad = dist_thresh;
+    grid = torch::nn::functional::pad(grid, torch::nn::functional::PadFuncOptions({pad,pad,pad,pad}).mode(torch::kConstant));
+    std::cout << grid.sizes() << std::endl;
+    for(int i = 0; i < rcornersT.size(0); i++){
       int pt[2] = {rcornersT[i][0].item<int>() + pad, rcornersT[i][1].item<int>() + pad};
-      if ( pt[1] < 235 && pt[0] < 315 && grid[pt[1]][pt[0]].item<float>() == 1){
-          grid[pt[1] - pad][pt[0] - pad] = 0;
-          grid[pt[1]][pt[0] - pad] = 0;
-          grid[pt[1] - pad][pt[0]] = 0;
-          grid[pt[1] + pad][pt[0] + pad] = 0;
-          grid[pt[1] + pad][pt[0] + pad] = 0;
-
+      if (grid[pt[1]][pt[0]].item<int>() == 1){
+          for(int i = - 1 * pad; i < pad; i++){
+              for(int j = - 1 * pad; j < pad; j++){
+                  grid[pt[1] + i][pt[0] + j] = 0;
+              }
+          }
           grid[pt[1]][pt[0]] = -1;
-      } 
+      }
     }
 
-    auto keep = at::where(grid  == -1);
-  
+    auto keep = at::where(grid == -1);
+    std::cout << "KEEPS" << keep[0].size(0) << std::endl;
+    keep[0] -= pad;
+    keep[1] -= pad;
     auto inds_keep = at::zeros(keep[0].size(0));
-    
-    for(int i = 0; i < inds.size(0); i++) {    
-      std::cout <<keep[1][i].item<int>()<< " " <<keep[0][i].item<int>()<< std::endl;
+
+    for(int i = 0; i < keep[0].size(0); i++) {    
       inds_keep[i] = inds[keep[0][i].item<int>()][keep[1][i].item<int>()];
     }
+    std::cout << "test" << std::endl;
 
     auto out = at::zeros({3,keep[0].size(0)});
     for(int i = 0; i < inds_keep.size(0); i++) {
-        std::cout << inds_keep.sizes() << inds_keep[i].item<int>() << corners.sizes() << std::endl;
         out[0][i] = corners[0][inds_keep[i].item<int>()];
         out[1][i] = corners[1][inds_keep[i].item<int>()];
         out[2][i] = corners[2][inds_keep[i].item<int>()];
 
     }
+
+    std::cout << "test" << std::endl;
     auto values = out[2];
     auto inds2 = (-1* values).argsort();
     for(int i = 0; i < inds2.size(0); i++) {
@@ -178,15 +177,19 @@ at::Tensor getPtsFromHeatmap(at::Tensor heatmap, float conf_thresh){
         pts[2][i] = heatmap[comp[0][i].item()][comp[1][i].item()];
       }
     }
-
-    pts = nms_fast(pts, heatmap.size(0), heatmap.size(1), 6); // TODO -> Parametrize
+    std::cout << "NUMBER OF POINTS BEFORE NMS:" << heatmap.sizes() << std::endl;
+    pts = nms_fast(pts, heatmap.size(0), heatmap.size(1), 3); // TODO -> Parametrize
+    std::cout << "NUMBER OF POINTS AFTER NMS:" << pts.sizes() << std::endl;
     auto inds = pts[2].argsort(0);
     for(int i = 0; i < pts.size(0); i++) {
       for (int j = pts.size(1) - 1 ; j >= 0; j--) {
         pts[i][j] = pts[i][inds[j]];
       }
     }  
-    std::cout << "NUMBER OF POINTS:" << pts.sizes() << std::endl;
+    std::cout << "FINAL POINTS:" << pts.sizes() << std::endl;
+    for(int i =0; i < pts.size(1); i++){
+        std::cout<< pts[0][i].item<int>() << " " << pts[1][i].item<int>() << " " << pts[2][i].item<float>() << " " << std::endl;
+    }
 
 
     /*
@@ -226,11 +229,13 @@ at::Tensor depth2space(at::Tensor nodust, int blocks)
 
         output = at::stack(stack,0).transpose(0,1).permute({0,2,1,3,4});
         output = output.reshape({1, s_height, s_width, s_depth});
+        std::cout << "FINAL OUTPUT" << output.sizes() << at::mean(output)<<std::endl;
         return output;
+        
 }
 
 at::Tensor flattenDetections(at::Tensor semi){
-    auto dense =  at::softmax(semi, 1, c10::optional<c10::ScalarType>()); // [1,65,30,40]
+    auto dense =  torch::softmax(semi,1); // [1,65,30,40]
     auto nodust = dense.slice(1,0, dense.size(1) - 1); // [1,64,30,40]
 
     auto heatmap = depth2space(nodust, 8);
@@ -280,7 +285,7 @@ int main(int argc, const char* argv[]) {
     std::cout << "Could not read the image: " << std::endl;
     return 1;
   }
-  for(int k = 0; k < 10; k++ ){
+
   std::vector<torch::jit::IValue> inputs;
   auto tens = matToTensor(img, device);
 
@@ -291,7 +296,7 @@ int main(int argc, const char* argv[]) {
   auto descriptors = output.at("desc").toTensor();
 
   auto heatmap = flattenDetections(semi);
-  auto pts = getPtsFromHeatmap(heatmap.to(torch::kCPU), CONF_THRESH).to(torch::kCPU);
+  auto pts = getPtsFromHeatmap(heatmap, CONF_THRESH).to(torch::kCPU);
 
 
   for(int i = 0; i < pts.size(1); i++){
@@ -301,9 +306,9 @@ int main(int argc, const char* argv[]) {
   } 
 
 
-  cv::imshow("Display window", img);
-  int j = cv::waitKey(0); // Wait for a keystroke in the window
-  }
+  //cv::imshow("Display window", img);
+  //int j = cv::waitKey(0); // Wait for a keystroke in the window
+  
   /*
 
     auto dn = torch::norm(desc, 2, 1);
