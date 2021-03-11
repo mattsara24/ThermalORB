@@ -39,14 +39,13 @@
 #include <iostream>
 #include <memory>
 
-#define CONF_THRESH 0.0002
+#define CONF_THRESH 0.002
 
 at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
     auto grid = at::zeros({h,w}).to(torch::kInt);
     auto inds = at::zeros({h,w}).to(torch::kInt);
 
-    in_corners[2] *= -1;  
-    auto inds1 = in_corners[2].argsort(0);
+    auto inds1 = (-1*in_corners[2]).argsort(0);
     auto corners = at::zeros((in_corners.sizes()));
 
     for(int i = 0; i < in_corners.size(0); i++) {
@@ -67,20 +66,18 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
         return at::vstack({rcorners, in_corners[2]}).reshape({3,1});
     }
     
-    rcorners = rcorners.transpose(0,1).round().to(torch::kInt);
-    for(int i = 0; i < rcorners.size(0); i++){
-       grid[rcorners[i][1].item<int>()][rcorners[i][0].item<int>()] = 1;
-       inds[rcorners[i][1].item<int>()][rcorners[i][0].item<int>()] = i;
+    auto rcornersT = rcorners.transpose(0,1).round().to(torch::kInt);
+    for(int i = 0; i < rcornersT.size(0); i++){
+       grid[rcorners[1][i].item<int>()][rcorners[0][i].item<int>()] = 1;
+       inds[rcorners[1][i].item<int>()][rcorners[0][i].item<int>()] = i;
     }
 
 
     int pad = 2;//dist_thresh;
 
-        std::cout << pad<<std::endl;
-
     //grid = torch::nn::functional::pad(grid, torch::nn::functional::PadFuncOptions({pad}).mode(torch::kConstant));
-    for(int i = 2; i < rcorners.size(0) - 2; i++){
-      int pt[2] = {rcorners[i][0].item<int>() + pad, rcorners[i][1].item<int>() + pad};
+    for(int i = 2; i < rcornersT.size(0) - 2; i++){
+      int pt[2] = {rcornersT[i][0].item<int>() + pad, rcornersT[i][1].item<int>() + pad};
       if ( pt[1] < 235 && pt[0] < 315 && grid[pt[1]][pt[0]].item<float>() == 1){
           grid[pt[1] - pad][pt[0] - pad] = 0;
           grid[pt[1]][pt[0] - pad] = 0;
@@ -94,34 +91,29 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
 
     auto keep = at::where(grid  == -1);
   
-    auto inds_keep = at::zeros(inds.sizes());
-    std::cout <<"inds_keep"<< inds_keep.sizes() << std::endl;
-
+    auto inds_keep = at::zeros(keep[0].size(0));
+    
     for(int i = 0; i < inds.size(0); i++) {    
-      inds_keep[i] = inds[keep[1][i].item<int>(),keep[0][i].item<int>()];
+      std::cout <<keep[1][i].item<int>()<< " " <<keep[0][i].item<int>()<< std::endl;
+      inds_keep[i] = inds[keep[0][i].item<int>()][keep[1][i].item<int>()];
     }
-    auto out = at::zeros(corners.sizes());
-    for(int i = 0; i < out.size(0); i++) {
-        out[i] = corners[inds_keep[i].item<int>()];
-    }
-        std::cout <<"OUT"<< out.sizes() << std::endl;
 
-    auto values = out[out.size(1)-1];
+    auto out = at::zeros({3,keep[0].size(0)});
+    for(int i = 0; i < inds_keep.size(0); i++) {
+        std::cout << inds_keep.sizes() << inds_keep[i].item<int>() << corners.sizes() << std::endl;
+        out[0][i] = corners[0][inds_keep[i].item<int>()];
+        out[1][i] = corners[1][inds_keep[i].item<int>()];
+        out[2][i] = corners[2][inds_keep[i].item<int>()];
+
+    }
+    auto values = out[2];
     auto inds2 = (-1* values).argsort();
-        std::cout <<"inds2"<< inds2.sizes() << std::endl;
-
-    for(int i = 0; i < out.size(0); i++) {
-        out[i] = out[inds2[i].item<int>()];
+    for(int i = 0; i < inds2.size(0); i++) {
+        out[0][i] = out[0][inds2[i].item<int>()];
+        out[1][i] = out[1][inds2[i].item<int>()];
+        out[2][i] = out[2][inds2[i].item<int>()];
     }
 
-/*
-        inds_keep = inds[keepy, keepx]
-        out = corners[:, inds_keep]
-        values = out[-1, :]
-        inds2 = np.argsort(-values)
-        out = out[:, inds2]
-*/
-    std::cout <<"OUT"<< out.sizes() << std::endl;
     return out;
 }
 
