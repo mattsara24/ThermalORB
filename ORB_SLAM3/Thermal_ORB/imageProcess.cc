@@ -39,43 +39,167 @@
 #include <iostream>
 #include <memory>
 
-#define CONF_THRESH 0.000002
+#define CONF_THRESH 0.0002
+
+at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
+    auto grid = at::zeros({h,w}).to(torch::kInt);
+    auto inds = at::zeros({h,w}).to(torch::kInt);
+
+    in_corners[2] *= -1;  
+    auto inds1 = in_corners[2].argsort(0);
+    auto corners = at::zeros((in_corners.sizes()));
+
+    for(int i = 0; i < in_corners.size(0); i++) {
+      for (int j = in_corners.size(1) - 1 ; j >= 0; j--) {
+        corners[i][j] = in_corners[i][inds1[j]];
+      }
+    }  
+
+    auto rcorners = at::zeros({2, corners.size(1)});
+    
+    for(int i = 0; i < 2; i++) {
+        rcorners[i] = corners[i];
+    }  
+
+    if(rcorners.size(1) == 0){
+        return at::zeros({3,0}).to(torch::kInt);
+    } else if (rcorners.size(1) == 1) {
+        return at::vstack({rcorners, in_corners[2]}).reshape({3,1});
+    }
+    
+    rcorners = rcorners.transpose(0,1).round().to(torch::kInt);
+    for(int i = 0; i < rcorners.size(0); i++){
+       grid[rcorners[i][1].item<int>()][rcorners[i][0].item<int>()] = 1;
+       inds[rcorners[i][1].item<int>()][rcorners[i][0].item<int>()] = i;
+    }
+
+
+    int pad = 2;//dist_thresh;
+
+        std::cout << pad<<std::endl;
+
+    //grid = torch::nn::functional::pad(grid, torch::nn::functional::PadFuncOptions({pad}).mode(torch::kConstant));
+    for(int i = 2; i < rcorners.size(0) - 2; i++){
+      int pt[2] = {rcorners[i][0].item<int>() + pad, rcorners[i][1].item<int>() + pad};
+      if ( pt[1] < 235 && pt[0] < 315 && grid[pt[1]][pt[0]].item<float>() == 1){
+          grid[pt[1] - pad][pt[0] - pad] = 0;
+          grid[pt[1]][pt[0] - pad] = 0;
+          grid[pt[1] - pad][pt[0]] = 0;
+          grid[pt[1] + pad][pt[0] + pad] = 0;
+          grid[pt[1] + pad][pt[0] + pad] = 0;
+
+          grid[pt[1]][pt[0]] = -1;
+      } 
+    }
+
+    auto keep = at::where(grid  == -1);
+  
+    auto inds_keep = at::zeros(inds.sizes());
+    std::cout <<"inds_keep"<< inds_keep.sizes() << std::endl;
+
+    for(int i = 0; i < inds.size(0); i++) {    
+      inds_keep[i] = inds[keep[1][i].item<int>(),keep[0][i].item<int>()];
+    }
+    auto out = at::zeros(corners.sizes());
+    for(int i = 0; i < out.size(0); i++) {
+        out[i] = corners[inds_keep[i].item<int>()];
+    }
+        std::cout <<"OUT"<< out.sizes() << std::endl;
+
+    auto values = out[out.size(1)-1];
+    auto inds2 = (-1* values).argsort();
+        std::cout <<"inds2"<< inds2.sizes() << std::endl;
+
+    for(int i = 0; i < out.size(0); i++) {
+        out[i] = out[inds2[i].item<int>()];
+    }
+
+/*
+        inds_keep = inds[keepy, keepx]
+        out = corners[:, inds_keep]
+        values = out[-1, :]
+        inds2 = np.argsort(-values)
+        out = out[:, inds2]
+*/
+    std::cout <<"OUT"<< out.sizes() << std::endl;
+    return out;
+}
+
+/*
+    def nms_fast(self, in_corners, H, W, dist_thresh):
+
+        grid = np.zeros((H, W)).astype(int)  # Track NMS data.
+        inds = np.zeros((H, W)).astype(int)  # Store indices of points.
+        # Sort by confidence and round to nearest int.
+        inds1 = np.argsort(-in_corners[2, :])
+        corners = in_corners[:, inds1]
+        rcorners = corners[:2, :].round().astype(int)  # Rounded corners.
+        # Check for edge case of 0 or 1 corners.
+        if rcorners.shape[1] == 0:
+            return np.zeros((3, 0)).astype(int), np.zeros(0).astype(int)
+        if rcorners.shape[1] == 1:
+            out = np.vstack((rcorners, in_corners[2])).reshape(3, 1)
+            return out, np.zeros((1)).astype(int)
+        # Initialize the grid.
+        for i, rc in enumerate(rcorners.T):
+            grid[rcorners[1, i], rcorners[0, i]] = 1
+            inds[rcorners[1, i], rcorners[0, i]] = i
+        # Pad the border of the grid, so that we can NMS points near the border.
+        pad = dist_thresh
+        grid = np.pad(grid, ((pad, pad), (pad, pad)), mode='constant')
+        # Iterate through points, highest to lowest conf, suppress neighborhood.
+        count = 0
+        for i, rc in enumerate(rcorners.T):
+            # Account for top and left padding.
+            pt = (rc[0] + pad, rc[1] + pad)
+            if grid[pt[1], pt[0]] == 1:  # If not yet suppressed.
+                grid[pt[1] - pad:pt[1] + pad + 1, pt[0] - pad:pt[0] + pad + 1] = 0
+                grid[pt[1], pt[0]] = -1
+                count += 1
+        # Get all surviving -1's and return sorted array of remaining corners.
+        keepy, keepx = np.where(grid == -1)
+        keepy, keepx = keepy - pad, keepx - pad
+        inds_keep = inds[keepy, keepx]
+        out = corners[:, inds_keep]
+        values = out[-1, :]
+        inds2 = np.argsort(-values)
+        out = out[:, inds2]
+        out_inds = inds1[inds_keep[inds2]]
+        return out, out_inds
+        */
 
 
 at::Tensor getPtsFromHeatmap(at::Tensor heatmap, float conf_thresh){
     heatmap = heatmap.squeeze();
-    auto size = heatmap.sizes();
     auto comp = at::where(heatmap >= conf_thresh);
-    auto sparseMap = (heatmap >= conf_thresh);
+    std::cout << "PASSING POINTS:" << comp[0].size(0) << std::endl;
+    std::cout << "FAILING POINTS:" << comp[1].size(0) << std::endl;
+
     if(comp[0].size(0) == 0)
         return at::zeros({3,0});   
 
     auto pts = at::zeros({3,comp[0].size(0)});
-    pts[0].slice(0,0,pts.size(1)) = comp[1];
-    pts[1].slice(0,0,pts.size(1)) = comp[0]; // TODO VERIFY 
-    //pts[2].slice(0,0,pts.size(1)) = heatmap(comp[0],comp[1]); TODO FIX
-    std::cout << pts << std::endl;
+    for(int i = 0; i < comp[0].size(0) && i < comp[1].size(0); i++){
+      pts[1][i] = comp[0][i];
+      if(i < comp[1].size(0)){
+        pts[0][i] = comp[1][i];
+        pts[2][i] = heatmap[comp[0][i].item()][comp[1][i].item()];
+      }
+    }
+
+    pts = nms_fast(pts, heatmap.size(0), heatmap.size(1), 6); // TODO -> Parametrize
+    auto inds = pts[2].argsort(0);
+    for(int i = 0; i < pts.size(0); i++) {
+      for (int j = pts.size(1) - 1 ; j >= 0; j--) {
+        pts[i][j] = pts[i][inds[j]];
+      }
+    }  
+    std::cout << "NUMBER OF POINTS:" << pts.sizes() << std::endl;
+
+
     /*
 FUNCTIONS
 
-    def getPtsFromHeatmap(self, heatmap):
-        '''
-        :param self:
-        :param heatmap:
-            np (H, W)
-        :return:
-        '''
-        heatmap = heatmap.squeeze()
-        # print("heatmap sq:", heatmap.shape)
-        H, W = heatmap.shape[0], heatmap.shape[1]
-        xs, ys = np.where(heatmap >= self.conf_thresh)  # Confidence threshold.
-        self.sparsemap = (heatmap >= self.conf_thresh)
-        if len(xs) == 0:
-            return np.zeros((3, 0))
-        pts = np.zeros((3, len(xs)))  # Populate point data sized 3xN.
-        pts[0, :] = ys # abuse of ys, xs
-        pts[1, :] = xs
-        pts[2, :] = heatmap[xs, ys]  # check the (x, y) here
         pts, _ = self.nms_fast(pts, H, W, dist_thresh=self.nms_dist)  # Apply NMS.
         inds = np.argsort(pts[2, :])
         pts = pts[:, inds[::-1]]  # Sort by confidence.
@@ -87,7 +211,7 @@ FUNCTIONS
         pts = pts[:, ~toremove]
         return pts
 */
-    return heatmap;
+    return pts;
 }
 
 at::Tensor depth2space(at::Tensor nodust, int blocks)
@@ -158,30 +282,54 @@ int main(int argc, const char* argv[]) {
   }
   std::cout << "SUCCESSFULLY LOADED MODEL" << argv[1] << std::endl;
 
-  std::vector<torch::jit::IValue> inputs;
   cv::Mat img = cv::imread("../test.png");
   if(img.empty())
   {
     std::cout << "Could not read the image: " << std::endl;
     return 1;
   }
-
+  for(int k = 0; k < 10; k++ ){
+  std::vector<torch::jit::IValue> inputs;
   auto tens = matToTensor(img, device);
 
   inputs.push_back(tens);
-  
   auto output = module.forward(inputs).toGenericDict();
 
   auto semi = output.at("semi").toTensor();
   auto descriptors = output.at("desc").toTensor();
 
-
-
   auto heatmap = flattenDetections(semi);
-  auto pts = getPtsFromHeatmap(heatmap.to(torch::kCPU), CONF_THRESH);
-  /*
-  for (auto & pt : pts) {
-      std::cout << pt <<  std::endl;
+  auto pts = getPtsFromHeatmap(heatmap.to(torch::kCPU), CONF_THRESH).to(torch::kCPU);
+
+
+  for(int i = 0; i < pts.size(1); i++){
+    int x = pts[0][i].item<int>();
+    int y = pts[1][i].item<int>();
+    cv::circle(img,cv::Point(x,y), 5, (0,0,255), -1);
+  } 
+
+
+  cv::imshow("Display window", img);
+  int j = cv::waitKey(0); // Wait for a keystroke in the window
   }
+  /*
+
+    auto dn = torch::norm(desc, 2, 1);
+    desc = desc.div(torch::unsqueeze(dn, 1));
+
+    desc = desc.transpose(0, 1).contiguous();  // [n_keypoints, 256]
+    desc = desc.to(torch::kCPU);
+
+    dense_desc = nn.functional.interpolate(coarse_desc, scale_factor=(self.cell, self.cell), mode='bilinear')
+    # norm the descriptor
+    def norm_desc(desc):
+        dn = torch.norm(desc, p=2, dim=1) # Compute the norm.
+        desc = desc.div(torch.unsqueeze(dn, 1)) # Divide by norm to normalize.
+        return desc
+    dense_desc = norm_desc(dense_desc)
+
+    # extract descriptors
+    dense_desc_cpu = dense_desc.cpu().detach().numpy()
+
   */
 }
