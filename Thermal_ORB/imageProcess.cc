@@ -217,7 +217,7 @@ int main(int argc, const char* argv[]) {
   }
   std::cout << "SUCCESSFULLY LOADED MODEL" << argv[1] << std::endl;
 
-  cv::Mat img = cv::imread("/Users/mattsaraceno/Desktop/EECS568/FINAL_RESOURCES/ThermalORB/ORB_SLAM3/Thermal_ORB/test.png");
+  cv::Mat img = cv::imread("../test.png");
   if(img.empty())
   {
     std::cout << "Could not read the image: " << std::endl;
