@@ -87,7 +87,8 @@ public:
         STEREO=1,
         RGBD=2,
         IMU_MONOCULAR=3,
-        IMU_STEREO=4
+        IMU_STEREO=4,
+        THERMAL_MONOCULAR=5
     };
 
     // File type
@@ -116,6 +117,12 @@ public:
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
     // Returns the camera pose (empty if tracking fails).
     cv::Mat TrackMonocular(const cv::Mat &im, const double &timestamp, const vector<IMU::Point>& vImuMeas = vector<IMU::Point>(), string filename="");
+
+
+    // Proccess the given Thermal image frame and optionally imu data
+    // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale. TODO -> MAKE SURE THIS IS VALID
+    // Returns the camera pose (empty if tracking fails).
+    cv::Mat TrackThermal(const cv::Mat &im, const double &timestamp, const vector<IMU::Point>& vImuMeas = vector<IMU::Point>(), string filename="");
 
 
     // This stops local mapping thread (map building) and performs only camera tracking.
@@ -179,6 +186,10 @@ public:
 
     //void SaveAtlas(int type);
 
+    void setModelPath(std::string val){
+        modelPath = val;
+    }
+
 private:
 
     //bool LoadAtlas(string filename, int type);
@@ -237,6 +248,9 @@ private:
     std::vector<MapPoint*> mTrackedMapPoints;
     std::vector<cv::KeyPoint> mTrackedKeyPointsUn;
     std::mutex mMutexState;
+
+
+    std::string modelPath;
 };
 
 }// namespace ORB_SLAM

@@ -63,6 +63,8 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         cout << "Monocular-Inertial" << endl;
     else if(mSensor==IMU_STEREO)
         cout << "Stereo-Inertial" << endl;
+    else if(mSensor==THERMAL_MONOCULAR)
+        cout << "Thermal Monolcular" << endl;
 
     //Check settings file
     cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);
@@ -174,10 +176,10 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //(it will live in the main thread of execution, the one that called this constructor)
     cout << "Seq. Name: " << strSequence << endl;
     mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
-                             mpAtlas, mpKeyFrameDatabase, strSettingsFile, mSensor, strSequence);
+                             mpAtlas, mpKeyFrameDatabase, strSettingsFile, mSensor, strSequence, modelPath);
 
     //Initialize the Local Mapping thread and launch
-    mpLocalMapper = new LocalMapping(this, mpAtlas, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR, mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO, strSequence);
+    mpLocalMapper = new LocalMapping(this, mpAtlas, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR || mSensor==THERMAL_MONOCULAR, mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO, strSequence);
     mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper);
     mpLocalMapper->mInitFr = initFr;
     mpLocalMapper->mThFarPoints = fsSettings["thFarPoints"];
@@ -191,7 +193,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //Initialize the Loop Closing thread and launch
     // mSensor!=MONOCULAR && mSensor!=IMU_MONOCULAR
-    mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR); // mSensor!=MONOCULAR);
+    mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR && mSensor!=THERMAL_MONOCULAR); // mSensor!=MONOCULAR);
     mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser);
 
     //Initialize the Viewer thread and launch
@@ -350,6 +352,10 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp, const
         cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular nor Monocular-Inertial." << endl;
         exit(-1);
     }
+    if(mSensor == THERMAL_MONOCULAR){
+        cerr << "ERROR: you called TrackMonocular but input sensor was not set to Thermal-Monocular." << endl;
+        exit(-1);    
+    }
 
     // Check mode change
     {
@@ -406,6 +412,66 @@ cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp, const
     return Tcw;
 }
 
+cv::Mat System::TrackThermal(const cv::Mat &im, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename){
+    if(mSensor!=THERMAL_MONOCULAR)
+    {
+        cerr << "ERROR: you called TrackThermal but input sensor was not set to Thermal Monocular." << endl;
+        exit(-1);
+    }
+        // Check mode change
+    {
+        unique_lock<mutex> lock(mMutexMode);
+        if(mbActivateLocalizationMode)
+        {
+            mpLocalMapper->RequestStop();
+
+            // Wait until Local Mapping has effectively stopped
+            while(!mpLocalMapper->isStopped())
+            {
+                usleep(1000);
+            }
+
+            mpTracker->InformOnlyTracking(true);
+            mbActivateLocalizationMode = false;
+        }
+        if(mbDeactivateLocalizationMode)
+        {
+            mpTracker->InformOnlyTracking(false);
+            mpLocalMapper->Release();
+            mbDeactivateLocalizationMode = false;
+        }
+    }
+
+    // Check reset
+    {
+        unique_lock<mutex> lock(mMutexReset);
+        if(mbReset)
+        {
+            mpTracker->Reset();
+            mbReset = false;
+            mbResetActiveMap = false;
+        }
+        else if(mbResetActiveMap)
+        {
+            cout << "SYSTEM-> Reseting active map in monocular case" << endl;
+            mpTracker->ResetActiveMap();
+            mbResetActiveMap = false;
+        }
+    }
+
+    if (mSensor == System::IMU_MONOCULAR)
+        for(size_t i_imu = 0; i_imu < vImuMeas.size(); i_imu++)
+            mpTracker->GrabImuData(vImuMeas[i_imu]);
+
+    cv::Mat Tcw = mpTracker->GrabImageMonocular(im,timestamp,filename);
+
+    unique_lock<mutex> lock2(mMutexState);
+    mTrackingState = mpTracker->mState;
+    mTrackedMapPoints = mpTracker->mCurrentFrame.mvpMapPoints;
+    mTrackedKeyPointsUn = mpTracker->mCurrentFrame.mvKeysUn;
+
+    return Tcw;
+}
 
 
 void System::ActivateLocalizationMode()
@@ -480,7 +546,7 @@ void System::Shutdown()
 void System::SaveTrajectoryTUM(const string &filename)
 {
     cout << endl << "Saving camera trajectory to " << filename << " ..." << endl;
-    if(mSensor==MONOCULAR)
+    if(mSensor==MONOCULAR || mSensor==THERMAL_MONOCULAR)
     {
         cerr << "ERROR: SaveTrajectoryTUM cannot be used for monocular." << endl;
         return;
@@ -748,7 +814,7 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
 void System::SaveTrajectoryKITTI(const string &filename)
 {
     cout << endl << "Saving camera trajectory to " << filename << " ..." << endl;
-    if(mSensor==MONOCULAR)
+    if(mSensor==MONOCULAR || mSensor==THERMAL_MONOCULAR)
     {
         cerr << "ERROR: SaveTrajectoryKITTI cannot be used for monocular." << endl;
         return;

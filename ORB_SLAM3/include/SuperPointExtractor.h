@@ -16,21 +16,31 @@
 * If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef ORBEXTRACTOR_H
-#define ORBEXTRACTOR_H
-
+#ifndef SUPERPOINTEXTRACTOR_H
+#define SUPERPOINTEXTRACTOR_H
 #include <vector>
-#include <list>
+#include <iostream>
+
+#include <opencv2/core/core.hpp>
 #if (CV_MAJOR_VERSION > 3)
+#include <opencv2/imgproc/types_c.h>
 #include <opencv2/opencv.hpp>
-#else
-#include <opencv/cv.h>
+#define CV_LOAD_IMAGE_UNCHANGED cv::IMREAD_UNCHANGED
 #endif
+
+#include <torch/torch.h>
+#include <torch/script.h>
+#include <ATen/ATen.h>
+
+#include <iostream>
+#include <memory>
 
 
 namespace ORB_SLAM3
 {
 
+/*
+REF CLASS
 class ExtractorNode
 {
 public:
@@ -42,74 +52,43 @@ public:
     cv::Point2i UL, UR, BL, BR;
     std::list<ExtractorNode>::iterator lit;
     bool bNoMore;
-};
+}; */
 
-class ORBextractor
+class SuperPointExtractor
 {
 public:
     
     enum {HARRIS_SCORE=0, FAST_SCORE=1 };
 
-    ORBextractor(int nfeatures, float scaleFactor, int nlevels,
-                 int iniThFAST, int minThFAST);
+    SuperPointExtractor(int nfeatures, std::string filePath);
 
-    ~ORBextractor(){}
+    ~SuperPointExtractor(){}
 
     // Compute the ORB features and descriptors on an image.
     // ORB are dispersed on the image using an octree.
     // Mask is ignored in the current implementation.
-    int operator()( cv::InputArray _image, cv::InputArray _mask,
+    int operator()( cv::InputArray _image,
                     std::vector<cv::KeyPoint>& _keypoints,
                     cv::OutputArray _descriptors, std::vector<int> &vLappingArea);
 
-    int inline GetLevels(){
-        return nlevels;}
 
-    float inline GetScaleFactor(){
-        return scaleFactor;}
+    at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh);
+    at::Tensor getPtsFromHeatmap(at::Tensor heatmap, float conf_thresh);
+    at::Tensor depth2space(at::Tensor nodust, int blocks);
+    at::Tensor flattenDetections(at::Tensor semi);
+    at::Tensor matToTensor(cv::Mat frame, torch::Device device);
 
-    std::vector<float> inline GetScaleFactors(){
-        return mvScaleFactor;
-    }
 
-    std::vector<float> inline GetInverseScaleFactors(){
-        return mvInvScaleFactor;
-    }
-
-    std::vector<float> inline GetScaleSigmaSquares(){
-        return mvLevelSigma2;
-    }
-
-    std::vector<float> inline GetInverseScaleSigmaSquares(){
-        return mvInvLevelSigma2;
-    }
-
-    std::vector<cv::Mat> mvImagePyramid;
 
 protected:
 
-    void ComputePyramid(cv::Mat image);
-    void ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);    
-    std::vector<cv::KeyPoint> DistributeOctTree(const std::vector<cv::KeyPoint>& vToDistributeKeys, const int &minX,
-                                           const int &maxX, const int &minY, const int &maxY, const int &nFeatures, const int &level);
-
     void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);
-    std::vector<cv::Point> pattern;
 
     int nfeatures;
-    double scaleFactor;
-    int nlevels;
-    int iniThFAST;
-    int minThFAST;
-
-    std::vector<int> mnFeaturesPerLevel;
-
     std::vector<int> umax;
+    torch::jit::script::Module module;
+    torch::Device device = torch::kCPU;
 
-    std::vector<float> mvScaleFactor;
-    std::vector<float> mvInvScaleFactor;    
-    std::vector<float> mvLevelSigma2;
-    std::vector<float> mvInvLevelSigma2;
 };
 
 } //namespace ORB_SLAM

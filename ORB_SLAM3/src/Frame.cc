@@ -401,6 +401,129 @@ void Frame::AssignFeaturesToGrid()
     }
 }
 
+// Constructor for Thermal
+Frame::Frame(const cv::Mat &imGray, const double &timeStamp, SuperPointExtractor* extractor, ORBVocabulary* voc, GeometricCamera* pCamera, cv::Mat &distCoef, const float &bf, const float &thDepth, Frame* pPrevF, const IMU::Calib &ImuCalib)
+    :mpcpi(NULL),mpORBvocabulary(voc),mpORBextractorLeft(static_cast<ORBextractor*>(NULL)),mpORBextractorRight(static_cast<ORBextractor*>(NULL)), mpSuperPoint(extractor),
+     mTimeStamp(timeStamp), mK(static_cast<Pinhole*>(pCamera)->toK()), mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth),
+     mImuCalib(ImuCalib), mpImuPreintegrated(NULL),mpPrevFrame(pPrevF),mpImuPreintegratedFrame(NULL), mpReferenceKF(static_cast<KeyFrame*>(NULL)), mbImuPreintegrated(false), mpCamera(pCamera),
+     mpCamera2(nullptr), mTimeStereoMatch(0), mTimeORB_Ext(0)
+{
+    std::cout << "ENTERED FRAME" << std::endl;
+    // Frame ID
+    mnId=nNextId++;
+
+    // Scale Level Info
+    /*
+    TODO -> WHAT TO DO WITH THIS
+    mnScaleLevels = mpORBextractorLeft->GetLevels();
+    mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
+    mfLogScaleFactor = log(mfScaleFactor);
+    mvScaleFactors = mpORBextractorLeft->GetScaleFactors();
+    mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors();
+    mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
+    mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
+    */
+
+    // ORB extraction
+#ifdef SAVE_TIMES
+    std::chrono::steady_clock::time_point time_StartExtORB = std::chrono::steady_clock::now();
+#endif
+    std::cout << "extracting" << std::endl;
+    ExtractSuperPoint(imGray,0,0);
+    std::cout << "EXTRACTED" << std::endl;
+#ifdef SAVE_TIMES
+    std::chrono::steady_clock::time_point time_EndExtORB = std::chrono::steady_clock::now();
+
+    mTimeORB_Ext = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndExtORB - time_StartExtORB).count();
+#endif
+
+    std::cout << "ARRIVED" << std::endl;
+    N = mvKeys.size();
+
+    if(mvKeys.empty())
+        return;
+    N = mvKeys.size();
+    if(mvKeys.empty())
+        return;
+
+    std::cout << "distort" << std::endl;
+    UndistortKeyPoints();
+    std::cout << "distorted!" << std::endl;
+
+
+    // Set no stereo information
+    mvuRight = vector<float>(N,-1);
+    mvDepth = vector<float>(N,-1);
+    mnCloseMPs = 0;
+
+    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));
+
+    mmProjectPoints.clear();// = map<long unsigned int, cv::Point2f>(N, static_cast<cv::Point2f>(NULL));
+    mmMatchedInImage.clear();
+
+    mvbOutlier = vector<bool>(N,false);
+    std::cout << "INVESTYIGATe" << std::endl;
+
+    // This is done only for the first Frame (or after a change in the calibration)
+    if(mbInitialComputations)
+    {
+        ComputeImageBounds(imGray);
+
+        mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/static_cast<float>(mnMaxX-mnMinX);
+        mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/static_cast<float>(mnMaxY-mnMinY);
+
+        fx = static_cast<Pinhole*>(mpCamera)->toK().at<float>(0,0);
+        fy = static_cast<Pinhole*>(mpCamera)->toK().at<float>(1,1);
+        cx = static_cast<Pinhole*>(mpCamera)->toK().at<float>(0,2);
+        cy = static_cast<Pinhole*>(mpCamera)->toK().at<float>(1,2);
+        invfx = 1.0f/fx;
+        invfy = 1.0f/fy;
+
+        mbInitialComputations=false;
+    }
+
+    std::cout << "INVESTIGATION OVER" << std::endl;
+
+    mb = mbf/fx;
+
+    //Set no stereo fisheye information
+    Nleft = -1;
+    Nright = -1;
+    mvLeftToRightMatch = vector<int>(0);
+    mvRightToLeftMatch = vector<int>(0);
+    mTlr = cv::Mat(3,4,CV_32F);
+    mTrl = cv::Mat(3,4,CV_32F);
+    mvStereo3Dpoints = vector<cv::Mat>(0);
+    monoLeft = -1;
+    monoRight = -1;
+
+    std::cout << "INVESTIGATION 2" << std::endl;
+
+    AssignFeaturesToGrid();
+
+    // mVw = cv::Mat::zeros(3,1,CV_32F);
+    if(pPrevF)
+    {
+        if(!pPrevF->mVw.empty())
+            mVw = pPrevF->mVw.clone();
+    }
+    else
+    {
+        mVw = cv::Mat::zeros(3,1,CV_32F);
+    }
+    std::cout << "INVESTIGATION 2 OVER" << std::endl;
+
+
+    mpMutexImu = new std::mutex();
+}
+
+void Frame::ExtractSuperPoint(const cv::Mat &im, const int x0, const int x1)
+{
+    vector<int> vLapping = {x0,x1};
+    monoLeft = (*mpSuperPoint)(im,mvKeys,mDescriptors,vLapping);
+
+}
+
 void Frame::ExtractORB(int flag, const cv::Mat &im, const int x0, const int x1)
 {
     vector<int> vLapping = {x0,x1};

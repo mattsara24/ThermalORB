@@ -29,6 +29,7 @@
 
 #include "ImuTypes.h"
 #include "ORBVocabulary.h"
+#include "SuperPointExtractor.h"
 
 #include <mutex>
 #include <opencv2/opencv.hpp>
@@ -61,11 +62,18 @@ public:
     // Constructor for Monocular cameras.
     Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extractor,ORBVocabulary* voc, GeometricCamera* pCamera, cv::Mat &distCoef, const float &bf, const float &thDepth, Frame* pPrevF = static_cast<Frame*>(NULL), const IMU::Calib &ImuCalib = IMU::Calib());
 
+    // Constructor for Thermal cameras.
+    Frame(const cv::Mat &imGray, const double &timeStamp, SuperPointExtractor* extractor, ORBVocabulary* voc, GeometricCamera* pCamera, cv::Mat &distCoef, const float &bf, const float &thDepth, Frame* pPrevF = static_cast<Frame*>(NULL), const IMU::Calib &ImuCalib = IMU::Calib());
+
     // Destructor
     // ~Frame();
 
     // Extract ORB on the image. 0 for left image and 1 for right image.
     void ExtractORB(int flag, const cv::Mat &im, const int x0, const int x1);
+    
+    // Extract SuperPoint features from image
+    void ExtractSuperPoint(const cv::Mat &im, const int x0, const int x1);
+
 
     // Compute Bag of Words representation.
     void ComputeBoW();
@@ -136,6 +144,7 @@ public:
 
     // Feature extractor. The right is used only in the stereo case.
     ORBextractor* mpORBextractorLeft, *mpORBextractorRight;
+    SuperPointExtractor* mpSuperPoint;
 
     // Frame timestamp.
     double mTimeStamp;

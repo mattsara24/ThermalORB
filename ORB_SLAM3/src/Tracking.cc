@@ -29,6 +29,7 @@
 #include"G2oTypes.h"
 #include"Optimizer.h"
 #include"PnPsolver.h"
+#include"SuperPointExtractor.h"
 
 #include<iostream>
 
@@ -45,12 +46,12 @@ namespace ORB_SLAM3
 {
 
 
-Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, const string &_nameSeq):
+Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, const string &_nameSeq, const string & modelFilePath):
     mState(NO_IMAGES_YET), mSensor(sensor), mTrackedFr(0), mbStep(false),
     mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
     mpInitializer(static_cast<Initializer*>(NULL)), mpSystem(pSys), mpViewer(NULL),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
-    mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr)
+    mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), modelPath(modelFilePath)
 {
     // Load camera parameters from settings file
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
@@ -773,6 +774,9 @@ bool Tracking::ParseORBParamFile(cv::FileStorage &fSettings)
     if(mSensor==System::MONOCULAR || mSensor==System::IMU_MONOCULAR)
         mpIniORBextractor = new ORBextractor(5*nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
 
+    if(mSensor==System::THERMAL_MONOCULAR)
+        mpIniSuperPointExtractor = new SuperPointExtractor(5*nFeatures, modelPath); 
+
     cout << endl << "ORB Extractor Parameters: " << endl;
     cout << "- Number of Features: " << nFeatures << endl;
     cout << "- Scale Levels: " << nLevels << endl;
@@ -1069,6 +1073,18 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp,
         }
         else
             mCurrentFrame = Frame(mImGray,timestamp,mpORBextractorLeft,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth,&mLastFrame,*mpImuCalib);
+    }
+    else if(mSensor == System::THERMAL_MONOCULAR){
+        if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET ||(lastID - initID) < mMaxFrames)
+        {
+
+            std::cout << "grabbing image 1" << std::endl;
+            mCurrentFrame = Frame(mImGray,timestamp,mpIniSuperPointExtractor,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth);
+        }
+        else{
+                std::cout << "grabbing image 2" << std::endl;
+            mCurrentFrame = Frame(mImGray,timestamp,mpIniSuperPointExtractor,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth);
+        }
     }
 
     if (mState==NO_IMAGES_YET)

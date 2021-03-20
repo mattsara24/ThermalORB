@@ -38,6 +38,7 @@
 #include "System.h"
 #include "ImuTypes.h"
 
+#include "SuperPointExtractor.h"
 #include "GeometricCamera.h"
 
 #include <mutex>
@@ -58,7 +59,7 @@ class Tracking
 
 public:
     Tracking(System* pSys, ORBVocabulary* pVoc, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Atlas* pAtlas,
-             KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, const string &_nameSeq=std::string());
+             KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, const string &_nameSeq=std::string(), const string &modelFilePath=std::string());
 
     ~Tracking();
 
@@ -235,6 +236,10 @@ protected:
     //Other Thread Pointers
     LocalMapping* mpLocalMapper;
     LoopClosing* mpLoopClosing;
+
+    //SuperPoint
+    SuperPointExtractor* mpIniSuperPointExtractor;
+    string modelPath;
 
     //ORB
     ORBextractor* mpORBextractorLeft, *mpORBextractorRight;
