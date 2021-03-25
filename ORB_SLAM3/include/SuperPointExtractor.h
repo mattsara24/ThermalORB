@@ -60,7 +60,7 @@ public:
     
     enum {HARRIS_SCORE=0, FAST_SCORE=1 };
 
-    SuperPointExtractor(int nfeatures, std::string filePath);
+    SuperPointExtractor(int _nfeatures, std::string filePath, float _scaleFactor, int _nlevels);
 
     ~SuperPointExtractor(){}
 
@@ -85,6 +85,8 @@ protected:
     void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);
 
     int nfeatures;
+    int nlevels;
+    float scaleFactor;
     std::vector<int> umax;
     torch::jit::script::Module module;
     torch::Device device = torch::kCPU;

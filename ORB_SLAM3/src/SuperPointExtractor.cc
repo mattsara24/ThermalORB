@@ -1,5 +1,6 @@
 #include <vector>
 #include <iostream>
+#include <chrono>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -14,27 +15,24 @@
 #include <torch/torch.h>
 #include <torch/script.h>
 #include <ATen/ATen.h>
-
 #include  "SuperPointExtractor.h"
-
 
 #include <iostream>
 #include <memory>
 
-#define CONF_THRESH 0.02
+#define CONF_THRESH 0.09
 using namespace cv;
 using namespace std;
 
 namespace ORB_SLAM3
 {
-    SuperPointExtractor::SuperPointExtractor(int nfeatures, std::string filePath){     
+    SuperPointExtractor::SuperPointExtractor(int _nfeatures, std::string filePath, float _scaleFactor, int _nlevels): nfeatures(_nfeatures),scaleFactor(_scaleFactor), nlevels(_nlevels){     
         if (torch::cuda::is_available()) {
             std::cout << "CUDA is available! Using GPU." << std::endl;
             device = torch::kCUDA;
         } else {
             std::cout << "Using CPU.\n";
         }
-
 
         try {
             // Deserialize the ScriptModule from a file using torch::jit::load().
@@ -53,11 +51,13 @@ namespace ORB_SLAM3
     int SuperPointExtractor::operator() (cv::InputArray _image,
                     std::vector<cv::KeyPoint>& _keypoints,
                     cv::OutputArray _descriptors, std::vector<int> &vLappingArea ){
+        std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 
         if(_image.empty())
                     return -1;
 
         cv::Mat img = _image.getMat();
+        std::cout << img.size() << std::endl;
         assert(img.type() == CV_8UC1 );
 
         std::vector<torch::jit::IValue> inputs;
@@ -75,26 +75,30 @@ namespace ORB_SLAM3
         _keypoints = vector<cv::KeyPoint>(pts.size(1));
         
         cv::Mat descriptors;
-        _descriptors.create(pts.size(1), 32, CV_8U); // TODO - > oarametrixe
+        _descriptors.create(pts.size(1), 256, CV_8U); 
         descriptors = _descriptors.getMat();
 
         auto dense_desc = torch::nn::functional::interpolate(coarse_desc, torch::nn::functional::InterpolateFuncOptions().scale_factor(std::vector<double>({8,8})).mode(torch::kBilinear));
         auto dn = torch::norm(dense_desc, 2, 1);
         auto desc = dense_desc.div(torch::unsqueeze(dn, 1));
         desc = desc.to(torch::kCPU);
+        std::cout << "NUMBER OF POINTS: " << pts.size(1) << std::endl;
 
         int monoIndex = 0;
+        auto desc_per = desc.permute({0,2,3,1});
         for(int i = 0; i < pts.size(1) && i < nfeatures; i++) {
             //TODO -> might need to make this dynamic
             cv::KeyPoint keypoint = cv::KeyPoint(pts[0][i].item<int>(), pts[1][i].item<int>(),1); // TODO -> what is size param?
             _keypoints.at(monoIndex) = (keypoint);
 
-            auto desc_per = desc.permute({0,2,3,1});
-            auto tensor = desc_per[0][pts[0][i].item<int>()][pts[1][i].item<int>()].contiguous();
-            std::vector<float> vector(tensor.data_ptr<float>(), tensor.data_ptr<float>()+tensor.numel());
-            descriptors.row(monoIndex).setTo(cv::InputArray(vector));
+            auto tensor = desc_per[0][pts[1][i].item<int>()][pts[0][i].item<int>()].contiguous();
+            std::vector<float> vecVal(tensor.data_ptr<float>(), tensor.data_ptr<float>()+tensor.numel());
+            //std::cout << descriptors.size() << " " << descriptors.channels() << std::endl;
+            cv::InputArray(vecVal).copyTo(descriptors.row(monoIndex));
             monoIndex++;
         }
+        std::cout << "TIME: " <<  std::chrono::duration_cast<std::chrono::duration<double> >(std::chrono::steady_clock::now() - t1).count() << std::endl;
+
 
         return monoIndex;              
     }
@@ -181,19 +185,19 @@ namespace ORB_SLAM3
 
         auto pts = at::zeros({3,comp[0].size(0)});
         for(int i = 0; i < comp[0].size(0) && i < comp[1].size(0); i++){
-        pts[1][i] = comp[0][i];
-        if(i < comp[1].size(0)){
-            pts[0][i] = comp[1][i];
-            pts[2][i] = heatmap[comp[0][i].item()][comp[1][i].item()];
+            pts[1][i] = comp[0][i];
+            if(i < comp[1].size(0)){
+                pts[0][i] = comp[1][i];
+                pts[2][i] = heatmap[comp[0][i].item()][comp[1][i].item()];
+            }
         }
-        }
-        pts = nms_fast(pts, heatmap.size(0), heatmap.size(1), 3); // TODO -> Parametrize
-        auto inds = pts[2].argsort(0);
+        //pts = nms_fast(pts, heatmap.size(0), heatmap.size(1), 3); // TODO -> Parametrize
+        /*auto inds = pts[2].argsort(0);
         for(int i = 0; i < pts.size(0); i++) {
             for (int j = pts.size(1) - 1 ; j >= 0; j--) {
                 pts[i][j] = pts[i][inds[j]];
             }
-        }  
+        } */ 
 
         //TODO -> Remove points around the border of the image
         return pts;

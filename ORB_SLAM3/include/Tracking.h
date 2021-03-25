@@ -239,6 +239,7 @@ protected:
 
     //SuperPoint
     SuperPointExtractor* mpIniSuperPointExtractor;
+    SuperPointExtractor* mpSuperPointExtractor;
     string modelPath;
 
     //ORB

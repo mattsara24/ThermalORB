@@ -767,6 +767,7 @@ bool Tracking::ParseORBParamFile(cv::FileStorage &fSettings)
     }
 
     mpORBextractorLeft = new ORBextractor(nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
+    mpSuperPointExtractor = new SuperPointExtractor(nFeatures, "TEMP", 1.0f ,1); // TEMP
 
     if(mSensor==System::STEREO || mSensor==System::IMU_STEREO)
         mpORBextractorRight = new ORBextractor(nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
@@ -775,7 +776,7 @@ bool Tracking::ParseORBParamFile(cv::FileStorage &fSettings)
         mpIniORBextractor = new ORBextractor(5*nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
 
     if(mSensor==System::THERMAL_MONOCULAR)
-        mpIniSuperPointExtractor = new SuperPointExtractor(5*nFeatures, modelPath); 
+        mpIniSuperPointExtractor = new SuperPointExtractor(5*nFeatures, modelPath, 1.0f, 1); 
 
     cout << endl << "ORB Extractor Parameters: " << endl;
     cout << "- Number of Features: " << nFeatures << endl;
@@ -1077,13 +1078,10 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp,
     else if(mSensor == System::THERMAL_MONOCULAR){
         if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET ||(lastID - initID) < mMaxFrames)
         {
-
-            std::cout << "grabbing image 1" << std::endl;
             mCurrentFrame = Frame(mImGray,timestamp,mpIniSuperPointExtractor,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth);
         }
         else{
-                std::cout << "grabbing image 2" << std::endl;
-            mCurrentFrame = Frame(mImGray,timestamp,mpIniSuperPointExtractor,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth);
+            mCurrentFrame = Frame(mImGray,timestamp,mpSuperPointExtractor,mpORBVocabulary,mpCamera,mDistCoef,mbf,mThDepth);
         }
     }
 
@@ -2077,7 +2075,7 @@ void Tracking::MonocularInitialization()
         // Find correspondences
         ORBmatcher matcher(0.9,true);
         int nmatches = matcher.SearchForInitialization(mInitialFrame,mCurrentFrame,mvbPrevMatched,mvIniMatches,100);
-
+        std::cout << "NMATCHES" << nmatches << std::endl;
         // Check if there are enough correspondences
         if(nmatches<100)
         {
