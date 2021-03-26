@@ -2348,7 +2348,7 @@ void ORBmatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int &ind1, 
 // http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
 int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
 {
-    /*
+    
     const int *pa = a.ptr<int32_t>();
     const int *pb = b.ptr<int32_t>();
 
@@ -2361,8 +2361,9 @@ int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
         v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
         dist += (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24;
     }
+    std::cout << dist << std::endl;
 
-    return dist;*/
+    //return dist;
     return DescriptorDistanceL2(a,b);
 }
 
@@ -2370,6 +2371,7 @@ int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
 int ORBmatcher::DescriptorDistanceL2(const cv::Mat &a, const cv::Mat &b)
 {
     int dist = cv::norm(a,b);
+    std::cout <<"DIST" << dist << std::endl;
 
     return dist;
 }

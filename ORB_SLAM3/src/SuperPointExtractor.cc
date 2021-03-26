@@ -88,7 +88,7 @@ namespace ORB_SLAM3
         auto desc_per = desc.permute({0,2,3,1});
         for(int i = 0; i < pts.size(1) && i < nfeatures; i++) {
             //TODO -> might need to make this dynamic
-            cv::KeyPoint keypoint = cv::KeyPoint(pts[0][i].item<int>(), pts[1][i].item<int>(),1); // TODO -> what is size param?
+            cv::KeyPoint keypoint = cv::KeyPoint(pts[1][i].item<int>() * 3, (int) pts[0][i].item<int>()*1.5, 1); // TODO -> what is size param?
             _keypoints.at(monoIndex) = (keypoint);
 
             auto tensor = desc_per[0][pts[1][i].item<int>()][pts[0][i].item<int>()].contiguous();
