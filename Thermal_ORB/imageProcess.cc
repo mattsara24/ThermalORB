@@ -68,7 +68,7 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
 
     int pad = dist_thresh;
     grid = torch::nn::functional::pad(grid, torch::nn::functional::PadFuncOptions({pad,pad,pad,pad}).mode(torch::kConstant));
-    std::cout << grid.sizes() << std::endl;
+    //std::cout << grid.sizes() << std::endl;
     for(int i = 0; i < rcornersT.size(0); i++){
       int pt[2] = {rcornersT[i][0].item<int>() + pad, rcornersT[i][1].item<int>() + pad};
       if (grid[pt[1]][pt[0]].item<int>() == 1){
@@ -82,7 +82,6 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
     }
 
     auto keep = at::where(grid == -1);
-    std::cout << "KEEPS" << keep[0].size(0) << std::endl;
     keep[0] -= pad;
     keep[1] -= pad;
     auto inds_keep = at::zeros(keep[0].size(0));
@@ -90,7 +89,6 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
     for(int i = 0; i < keep[0].size(0); i++) {
       inds_keep[i] = inds[keep[0][i].item<int>()][keep[1][i].item<int>()];
     }
-    std::cout << "test" << std::endl;
 
     auto out = at::zeros({3,keep[0].size(0)});
     for(int i = 0; i < inds_keep.size(0); i++) {
@@ -100,7 +98,6 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
 
     }
 
-    std::cout << "test" << std::endl;
     auto values = out[2];
     auto inds2 = (-1* values).argsort();
     for(int i = 0; i < inds2.size(0); i++) {
@@ -115,8 +112,8 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
 at::Tensor getPtsFromHeatmap(at::Tensor heatmap, float conf_thresh){
     heatmap = heatmap.squeeze();
     auto comp = at::where(heatmap >= conf_thresh);
-    std::cout << "PASSING POINTS:" << comp[0].size(0) << std::endl;
-    std::cout << "FAILING POINTS:" << comp[1].size(0) << std::endl;
+    //std::cout << "PASSING POINTS:" << comp[0].size(0) << std::endl;
+    //std::cout << "FAILING POINTS:" << comp[1].size(0) << std::endl;
 
     if(comp[0].size(0) == 0)
         return at::zeros({3,0});   
@@ -129,16 +126,13 @@ at::Tensor getPtsFromHeatmap(at::Tensor heatmap, float conf_thresh){
         pts[2][i] = heatmap[comp[0][i].item()][comp[1][i].item()];
       }
     }
-    std::cout << "NUMBER OF POINTS BEFORE NMS:" << heatmap.sizes() << std::endl;
     pts = nms_fast(pts, heatmap.size(0), heatmap.size(1), 3); // TODO -> Parametrize
-    std::cout << "NUMBER OF POINTS AFTER NMS:" << pts.sizes() << std::endl;
     auto inds = pts[2].argsort(0);
     for(int i = 0; i < pts.size(0); i++) {
       for (int j = pts.size(1) - 1 ; j >= 0; j--) {
         pts[i][j] = pts[i][inds[j]];
       }
     }  
-    std::cout << "FINAL POINTS:" << pts.sizes() << std::endl;
     for(int i =0; i < pts.size(1); i++){
         std::cout<< pts[0][i].item<int>() << " " << pts[1][i].item<int>() << " " << pts[2][i].item<float>() << " " << std::endl;
     }
@@ -167,7 +161,6 @@ at::Tensor depth2space(at::Tensor nodust, int blocks)
 
         output = at::stack(stack,0).transpose(0,1).permute({0,2,1,3,4});
         output = output.reshape({1, s_height, s_width, s_depth});
-        std::cout << "FINAL OUTPUT" << output.sizes() << at::mean(output)<<std::endl;
         return output;
         
 }
@@ -199,7 +192,7 @@ int main(int argc, const char* argv[]) {
   torch::Device device = torch::kCPU;
   if (torch::cuda::is_available()) {
     std::cout << "CUDA is available! Using GPU." << std::endl;
-    //device = torch::kCUDA;
+    device = torch::kCUDA;
   } else {
       std::cout << "Using CPU.\n";
   }
@@ -223,48 +216,48 @@ int main(int argc, const char* argv[]) {
     std::cout << "Could not read the image: " << std::endl;
     return 1;
   }
+    std::vector<torch::jit::IValue> inputs;
+    auto tens = matToTensor(img, device);
 
-  std::vector<torch::jit::IValue> inputs;
-  auto tens = matToTensor(img, device);
+    inputs.push_back(tens);
+    auto output = module.forward(inputs).toGenericDict();
 
-  inputs.push_back(tens);
-  auto output = module.forward(inputs).toGenericDict();
+    auto semi = output.at("semi").toTensor().to(torch::kCPU);
+    auto coarse_desc = output.at("desc").toTensor().to(torch::kCPU);
 
-  auto semi = output.at("semi").toTensor();
-  auto descriptors = output.at("desc").toTensor();
-
-  auto heatmap = flattenDetections(semi);
-  auto pts = getPtsFromHeatmap(heatmap, CONF_THRESH).to(torch::kCPU);
-
-
-  for(int i = 0; i < pts.size(1); i++){
-    int x = pts[0][i].item<int>();
-    int y = pts[1][i].item<int>();
-    cv::circle(img,cv::Point(x,y), 5, (0,0,255), -1);
-  } 
+    auto heatmap = flattenDetections(semi);
+    auto pts = getPtsFromHeatmap(heatmap, CONF_THRESH);
 
 
-  //cv::imshow("Display window", img);
-  //int j = cv::waitKey(0); // Wait for a keystroke in the window
- 
-  //TODO -> Translate to C++  --- > dense_desc = nn.functional.interpolate(coarse_desc, scale_factor=(self.cell, self.cell), mode='bilinear')
-  auto dn = torch::norm(descriptors, 2, 1);
-  auto desc = descriptors.div(torch::unsqueeze(dn, 1));
+    for(int i = 0; i < pts.size(1); i++){
+      int x = pts[0][i].item<int>();
+      int y = pts[1][i].item<int>();
+      cv::circle(img,cv::Point(x,y), 5, (0,0,255), -1);
+    } 
+          
 
-  desc = desc.transpose(0, 1).contiguous();  // [n_keypoints, 256]
-  desc = desc.to(torch::kCPU);
+    auto dense_desc = torch::nn::functional::interpolate(coarse_desc, torch::nn::functional::InterpolateFuncOptions().scale_factor(std::vector<double>({8,8})).mode(torch::kBilinear));
+    auto dn = torch::norm(dense_desc, 2, 1);
+    auto desc = dense_desc.div(torch::unsqueeze(dn, 1));
+    desc = desc.to(torch::kCPU);
+    std::cout << "NUMBER OF POINTS: " << pts.size(1) << std::endl;
 
-  /*
+    int monoIndex = 0;
+    std::cout << desc.sizes() << std::endl;
+    auto desc_per = desc.permute({0,2,3,1});
+    for(int i = 0; i < pts.size(1); i++) {
+        //TODO -> might need to make this dynamic
+        //cv::KeyPoint keypoint = cv::KeyPoint(pts[0][i].item<int>(), pts[1][i].item<int>(),1); // TODO -> what is size param?
+        //_keypoints.at(monoIndex) = (keypoint);
+        //pts_desc = [dense_desc_cpu[i, :, pts[i][1,:].astype(int), pts[i][0, :].astype(int)].transpose() for i in range(len(pts))]
 
-    # norm the descriptor
-    def norm_desc(desc):
-        dn = torch.norm(desc, p=2, dim=1) # Compute the norm.
-        desc = desc.div(torch.unsqueeze(dn, 1)) # Divide by norm to normalize.
-        return desc
-    dense_desc = norm_desc(dense_desc)
+        auto tensor = desc_per[0][pts[1][i].item<int>()][pts[0][i].item<int>()].contiguous();
+        std::vector<float> vecVal(tensor.data_ptr<float>(), tensor.data_ptr<float>()+tensor.numel());
+        //descriptors.row(monoIndex).setTo(cv::InputArray(vecVal));
+        monoIndex++;
+    }
+  //  cv::imshow("display window", img);
+  //  cv::waitKey(0);
 
-    # extract descriptors
-    dense_desc_cpu = dense_desc.cpu().detach().numpy()
 
-  */
 }
