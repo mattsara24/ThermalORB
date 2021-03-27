@@ -78,9 +78,6 @@ at::Tensor nms_fast(at::Tensor in_corners, int h, int w, int dist_thresh) {
     auto values = out[2];
     auto inds2 = values.argsort(0, true);
     out = out.index({torch::indexing::Slice(0,3,1), inds2.slice(0,0,inds2.size(0))});
-    for(int i = 0; i < out.size(1); i++) {
-        std::cout << out[0][i] << " " << out[1][i] << " " << out[2][i] << std::endl;
-    }
 
     return out;
 }
@@ -193,6 +190,7 @@ int main(int argc, const char* argv[]) {
   }
 
     for (int i = 0; i < 10; i++){
+        std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 
     std::vector<torch::jit::IValue> inputs;
     auto tens = matToTensor(img, device);
@@ -204,9 +202,7 @@ int main(int argc, const char* argv[]) {
     auto coarse_desc = output.at("desc").toTensor().to(torch::kCPU);
     
     auto heatmap = flattenDetections(semi);
-    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
     auto pts = getPtsFromHeatmap(heatmap, CONF_THRESH);
-    std::cout << "TIME: " <<  std::chrono::duration_cast<std::chrono::duration<double> >(std::chrono::steady_clock::now() - t1).count() << std::endl;
 
 /*
     for(int i = 0; i < pts.size(1); i++){
@@ -235,6 +231,8 @@ int main(int argc, const char* argv[]) {
         //descriptors.row(monoIndex).setTo(cv::InputArray(vecVal));
         monoIndex++;
     }
+        std::cout << "TIME: " <<  std::chrono::duration_cast<std::chrono::duration<double> >(std::chrono::steady_clock::now() - t1).count() << std::endl;
+
     }
   //  cv::imshow("display window", img);
   //  cv::waitKey(0);
