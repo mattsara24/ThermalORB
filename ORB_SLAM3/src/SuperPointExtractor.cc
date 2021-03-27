@@ -109,19 +109,10 @@ namespace ORB_SLAM3
         auto grid = at::zeros({h,w}).to(torch::kInt);
         auto inds = at::zeros({h,w}).to(torch::kInt);
         
-        auto inds1 = (in_corners[2]).argsort(0);
-        auto corners = at::zeros(in_corners.sizes());
-        for(int i = 0; i < in_corners.size(0); i++) {
-        for (int j = in_corners.size(1) - 1 ; j >= 0; j--) {
-            corners[i][j] = in_corners[i][inds1[j]];
-        }
-        }
+        auto inds1 = (in_corners[2]).argsort(0,true);
+        auto corners = in_corners.index({torch::indexing::Slice(0, in_corners.size(0), 1), inds1.slice(0,0, in_corners.size(1))});
 
-        auto rcorners = at::zeros({2, corners.size(1)});
-        for(int i = 0; i < 2; i++) {
-            rcorners[i] = corners[i];
-        }
-        
+        auto rcorners = corners.index({torch::indexing::Slice(0,2,1)});
         if(rcorners.size(1) == 0){
             return at::zeros({3,0}).to(torch::kInt);
         } else if (rcorners.size(1) == 1) {
@@ -130,49 +121,33 @@ namespace ORB_SLAM3
         
         auto rcornersT = rcorners.transpose(0,1).round().to(torch::kInt);
         for(int i = 0; i < rcornersT.size(0); i++){
-        grid[rcorners[1][i].item<int>()][rcorners[0][i].item<int>()] = 1;
-        inds[rcorners[1][i].item<int>()][rcorners[0][i].item<int>()] = i;
+           grid[rcorners[1][i].item<int>()][rcorners[0][i].item<int>()] = 1;
+           inds[rcorners[1][i].item<int>()][rcorners[0][i].item<int>()] = i;
         }
 
         int pad = dist_thresh;
         grid = torch::nn::functional::pad(grid, torch::nn::functional::PadFuncOptions({pad,pad,pad,pad}).mode(torch::kConstant));
-        std::cout << grid.sizes() << std::endl;
         for(int i = 0; i < rcornersT.size(0); i++){
-        int pt[2] = {rcornersT[i][0].item<int>() + pad, rcornersT[i][1].item<int>() + pad};
-        if (grid[pt[1]][pt[0]].item<int>() == 1){
-            for(int i = - 1 * pad; i < pad; i++){
-                for(int j = - 1 * pad; j < pad; j++){
-                    grid[pt[1] + i][pt[0] + j] = 0;
-                }
-            }
-            grid[pt[1]][pt[0]] = -1;
-        }
+          int pt[2] = {rcornersT[i][0].item<int>() + pad, rcornersT[i][1].item<int>() + pad};
+          if (grid[pt[1]][pt[0]].item<int>() == 1){
+              grid.index_put_({torch::indexing::Slice(pt[1] - pad, pt[1] + pad + 1, 1), torch::indexing::Slice(pt[0] - pad, pt[0] + pad + 1, 1)},0);
+              grid[pt[1]][pt[0]] = -1;
+          }
         }
 
         auto keep = at::where(grid == -1);
-        //std::cout << "KEEPS" << keep[0].size(0) << std::endl;
         keep[0] -= pad;
         keep[1] -= pad;
-        auto inds_keep = at::zeros(keep[0].size(0));
+        auto inds_keep = inds.index({keep[0].slice(0,0,keep[0].size(0)), keep[1].slice(0,0,keep[0].size(0))}).to(torch::kLong);
 
-        for(int i = 0; i < keep[0].size(0); i++) {
-        inds_keep[i] = inds[keep[0][i].item<int>()][keep[1][i].item<int>()];
-        }
+        auto out = corners.index({torch::indexing::Slice(0,3,1), inds_keep.slice(0,0,inds_keep.size(0))  });
 
-        auto out = at::zeros({3,keep[0].size(0)});
-        for(int i = 0; i < inds_keep.size(0); i++) {
-            out[0][i] = corners[0][inds_keep[i].item<int>()];
-            out[1][i] = corners[1][inds_keep[i].item<int>()];
-            out[2][i] = corners[2][inds_keep[i].item<int>()];
-
-        }
 
         auto values = out[2];
-        auto inds2 = (-1* values).argsort();
-        for(int i = 0; i < inds2.size(0); i++) {
-            out[0][i] = out[0][inds2[i].item<int>()];
-            out[1][i] = out[1][inds2[i].item<int>()];
-            out[2][i] = out[2][inds2[i].item<int>()];
+        auto inds2 = values.argsort(0, true);
+        out = out.index({torch::indexing::Slice(0,3,1), inds2.slice(0,0,inds2.size(0))});
+        for(int i = 0; i < out.size(1); i++) {
+            std::cout << out[0][i] << " " << out[1][i] << " " << out[2][i] << std::endl;
         }
 
         return out;
@@ -182,24 +157,29 @@ namespace ORB_SLAM3
         heatmap = heatmap.squeeze();
         auto comp = at::where(heatmap >= conf_thresh);
         //std::cout << "PASSING POINTS:" << comp[0].size(0) << std::endl;
+        //std::cout << "FAILING POINTS:" << comp[1].size(0) << std::endl;
+
         if(comp[0].size(0) == 0)
-            return at::zeros({3,0});   
+            return at::zeros({3,0});
 
         auto pts = at::zeros({3,comp[0].size(0)});
-        for(int i = 0; i < comp[0].size(0) && i < comp[1].size(0); i++){
-            pts[1][i] = comp[0][i];
-            if(i < comp[1].size(0)){
-                pts[0][i] = comp[1][i];
-                pts[2][i] = heatmap[comp[0][i].item()][comp[1][i].item()];
-            }
+
+        size_t size = comp[0].size(0);
+        size_t size2 = comp[1].size(0);
+        
+        //pts = pts.index({comp[1].slice(0,0,size2), comp[0].slice(0,0,size), heatmap.index({comp[0].slice(0,0,size), comp[1].slice(0,0,size2)})});
+        for(int i = 0; i < size && i < size2; i++){
+          pts[1][i] = comp[0][i];
+          if(i < comp[1].size(0)){
+            pts[0][i] = comp[1][i];
+            pts[2][i] = heatmap[comp[0][i].item()][comp[1][i].item()];
+          }
         }
         pts = nms_fast(pts, heatmap.size(0), heatmap.size(1), 3); // TODO -> Parametrize
-        auto inds = pts[2].argsort(0);
-        for(int i = 0; i < pts.size(0); i++) {
-            for (int j = pts.size(1) - 1 ; j >= 0; j--) {
-                pts[i][j] = pts[i][inds[j]];
-            }
-        }
+        auto inds = pts[2].argsort(0, true);
+
+        pts = pts.index({torch::indexing::Slice(0, 3, 1), inds.slice(0,0,pts.size(1))});
+
 
         //TODO -> Remove points around the border of the image
         return pts;
