@@ -26,15 +26,15 @@
 
 #include "Thirdparty/DBoW2/DBoW2/FeatureVector.h"
 
-#include<stdint-gcc.h>
+#include<stdint.h>
 
 using namespace std;
 
 namespace ORB_SLAM3
 {
 
-const int ORBmatcher::TH_HIGH = 100;
-const int ORBmatcher::TH_LOW = 50;
+const float ORBmatcher::TH_HIGH = 1.2;
+const float ORBmatcher::TH_LOW = 0.5;
 const int ORBmatcher::HISTO_LENGTH = 30;
 
 ORBmatcher::ORBmatcher(float nnratio, bool checkOri): mfNNratio(nnratio), mbCheckOrientation(checkOri)
@@ -730,8 +730,8 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
 
         cv::Mat d1 = F1.mDescriptors.row(i1);
 
-        int bestDist = INT_MAX;
-        int bestDist2 = INT_MAX;
+        float bestDist = INT_MAX;
+        float bestDist2 = INT_MAX;
         int bestIdx2 = -1;
 
         for(vector<size_t>::iterator vit=vIndices2.begin(); vit!=vIndices2.end(); vit++)
@@ -740,7 +740,7 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
 
             cv::Mat d2 = F2.mDescriptors.row(i2);
 
-            int dist = DescriptorDistance(d1,d2);
+            float dist = DescriptorDistance(d1,d2);
 
             if(vMatchedDistance[i2]<=dist)
                 continue;
@@ -757,9 +757,9 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
             }
         }
 
-        if(bestDist<=TH_LOW)
+        if(bestDist <= TH_LOW)
         {
-            if(bestDist<(float)bestDist2*mfNNratio)
+            if(bestDist<(float)bestDist2*mfNNratio) //TODO Need to figure out new values for these points
             {
                 if(vnMatches21[bestIdx2]>=0)
                 {
@@ -2346,7 +2346,7 @@ void ORBmatcher::ComputeThreeMaxima(vector<int>* histo, const int L, int &ind1, 
 
 // Bit set count operation from
 // http://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
-int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
+float ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
 {
     
     const int *pa = a.ptr<int32_t>();
@@ -2361,17 +2361,15 @@ int ORBmatcher::DescriptorDistance(const cv::Mat &a, const cv::Mat &b)
         v = (v & 0x33333333) + ((v >> 2) & 0x33333333);
         dist += (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24;
     }
-    std::cout << dist << std::endl;
 
     //return dist;
     return DescriptorDistanceL2(a,b);
 }
 
 
-int ORBmatcher::DescriptorDistanceL2(const cv::Mat &a, const cv::Mat &b)
+float ORBmatcher::DescriptorDistanceL2(const cv::Mat &a, const cv::Mat &b)
 {
-    int dist = cv::norm(a,b);
-    std::cout <<"DIST" << dist << std::endl;
+    float dist = cv::norm(a,b);
 
     return dist;
 }

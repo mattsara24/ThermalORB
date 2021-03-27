@@ -20,13 +20,13 @@
 #include <iostream>
 #include <memory>
 
-#define CONF_THRESH 0.09
+#define CONF_THRESH 0.0001
 using namespace cv;
 using namespace std;
 
 namespace ORB_SLAM3
 {
-    SuperPointExtractor::SuperPointExtractor(int _nfeatures, std::string filePath, float _scaleFactor, int _nlevels): nfeatures(_nfeatures),scaleFactor(_scaleFactor), nlevels(_nlevels){     
+    SuperPointExtractor::SuperPointExtractor(int _nfeatures, std::string filePath, float _scaleFactor, int _nlevels): nfeatures(_nfeatures), scaleFactor(_scaleFactor), nlevels(_nlevels){
         if (torch::cuda::is_available()) {
             std::cout << "CUDA is available! Using GPU." << std::endl;
             device = torch::kCUDA;
@@ -37,7 +37,7 @@ namespace ORB_SLAM3
         try {
             // Deserialize the ScriptModule from a file using torch::jit::load().
             std::cout << "FILEPATH:" << filePath << std::endl;
-            module = torch::jit::load("/nvme/Files/projectResources/ORB_SLAM3/pretained/combinedSuperPoint.pt");
+            module = torch::jit::load("/Users/mattsaraceno/Desktop/EECS568/FINAL_RESOURCES/ThermalORB/Thermal_ORB/pretained/combinedSuperPoint.pt");
             module.to(device);
         }
         catch (const c10::Error& e) {
@@ -75,7 +75,7 @@ namespace ORB_SLAM3
         _keypoints = vector<cv::KeyPoint>(pts.size(1));
         
         cv::Mat descriptors;
-        _descriptors.create(pts.size(1), 256, CV_8U); 
+        _descriptors.create(pts.size(1), 256, CV_64F);
         descriptors = _descriptors.getMat();
 
         auto dense_desc = torch::nn::functional::interpolate(coarse_desc, torch::nn::functional::InterpolateFuncOptions().scale_factor(std::vector<double>({8,8})).mode(torch::kBilinear));
@@ -95,8 +95,10 @@ namespace ORB_SLAM3
             std::vector<float> vecVal(tensor.data_ptr<float>(), tensor.data_ptr<float>()+tensor.numel());
             //std::cout << descriptors.size() << " " << descriptors.channels() << std::endl;
             cv::InputArray(vecVal).copyTo(descriptors.row(monoIndex));
+
             monoIndex++;
         }
+        
         std::cout << "TIME: " <<  std::chrono::duration_cast<std::chrono::duration<double> >(std::chrono::steady_clock::now() - t1).count() << std::endl;
 
 
@@ -191,13 +193,13 @@ namespace ORB_SLAM3
                 pts[2][i] = heatmap[comp[0][i].item()][comp[1][i].item()];
             }
         }
-        //pts = nms_fast(pts, heatmap.size(0), heatmap.size(1), 3); // TODO -> Parametrize
-        /*auto inds = pts[2].argsort(0);
+        pts = nms_fast(pts, heatmap.size(0), heatmap.size(1), 3); // TODO -> Parametrize
+        auto inds = pts[2].argsort(0);
         for(int i = 0; i < pts.size(0); i++) {
             for (int j = pts.size(1) - 1 ; j >= 0; j--) {
                 pts[i][j] = pts[i][inds[j]];
             }
-        } */ 
+        }
 
         //TODO -> Remove points around the border of the image
         return pts;
